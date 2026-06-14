@@ -4,8 +4,6 @@ kind: StatefulSet
 metadata:
   name: postgresql
   namespace: {{ .Release.Namespace }}
-  annotations:
-    helm.sh/hook-weight: "-5"
   labels:
     app.kubernetes.io/name: postgresql
     app.kubernetes.io/instance: "{{ .Release.Name }}"

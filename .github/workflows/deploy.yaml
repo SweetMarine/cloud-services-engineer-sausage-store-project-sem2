@@ -69,7 +69,7 @@ jobs:
       - name: Upload Helm chart to Nexus
         run: |
           curl -u "${NEXUS_HELM_REPO_USER}:${NEXUS_HELM_REPO_PASSWORD}" \
-            --upload-file sausage-store-0.1.1.tgz \
+            --upload-file sausage-store-0.1.2.tgz \
             "${NEXUS_HELM_REPO}/"
 
   deploy_helm_chart_to_kubernetes:
@@ -95,9 +95,9 @@ jobs:
       - name: Deploy to Kubernetes
         run: |
           helm upgrade --install sausage-store nexus/sausage-store \
-            --version 0.1.1 \
+            --version 0.1.2 \
             --namespace "${SAUSAGE_STORE_NAMESPACE}" \
-            --timeout 15m \
+            --timeout 5m \
             --set frontend.image="${DOCKER_USER}/sausage-frontend:latest" \
             --set backend.image="${DOCKER_USER}/sausage-backend:latest" \
             --set backend-report.image="${DOCKER_USER}/sausage-backend-report:latest" \
