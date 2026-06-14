@@ -1,0 +1,51 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: mongodb-init
+  namespace: {{ .Release.Namespace }}
+  annotations:
+    helm.sh/hook: post-install,post-upgrade
+    helm.sh/hook-weight: "5"
+    helm.sh/hook-delete-policy: hook-succeeded
+  labels:
+    app.kubernetes.io/name: mongodb-init
+    app.kubernetes.io/instance: "{{ .Release.Name }}"
+    app.kubernetes.io/managed-by: "{{ .Release.Service }}"
+    app.kubernetes.io/component: mongodb-init
+    app.kubernetes.io/part-of: sausage-store
+spec:
+  template:
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: mongodb-init
+          image: {{ .Values.mongodb.image }}
+          command:
+            - sh
+            - -c
+            - |
+              until mongosh --host mongodb --username "$MONGO_INITDB_ROOT_USERNAME" --password "$MONGO_INITDB_ROOT_PASSWORD" --authenticationDatabase admin --eval "db.adminCommand('ping')" >/dev/null 2>&1; do
+                echo "Waiting for MongoDB..."
+                sleep 5
+              done
+              mongosh --host mongodb --username "$MONGO_INITDB_ROOT_USERNAME" --password "$MONGO_INITDB_ROOT_PASSWORD" --authenticationDatabase admin --eval '
+                db = db.getSiblingDB("sausage-store");
+                const existingUser = db.getUsers({ filter: { user: "reports" } }).users;
+                if (existingUser.length === 0) {
+                  db.createUser({
+                    user: "reports",
+                    pwd: "reportspassword",
+                    roles: [{ role: "readWrite", db: "sausage-store" }]
+                  });
+                }
+              '
+          envFrom:
+            - configMapRef:
+                name: mongodb-conf
+          resources:
+            requests:
+              memory: "64Mi"
+              cpu: "50m"
+            limits:
+              memory: "128Mi"
+              cpu: "100m"
