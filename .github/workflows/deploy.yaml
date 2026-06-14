@@ -97,7 +97,12 @@ jobs:
           helm upgrade --install sausage-store nexus/sausage-store \
             --version 0.1.0 \
             --namespace "${SAUSAGE_STORE_NAMESPACE}" \
+            --timeout 15m \
             --set frontend.image="${DOCKER_USER}/sausage-frontend:latest" \
             --set backend.image="${DOCKER_USER}/sausage-backend:latest" \
             --set backend-report.image="${DOCKER_USER}/sausage-backend-report:latest" \
             --set frontend.ingress.host="${INGRESS_HOST}"
+      - name: Verify deployment
+        run: |
+          kubectl get pods,svc,ing -n "${SAUSAGE_STORE_NAMESPACE}"
+          kubectl get events -n "${SAUSAGE_STORE_NAMESPACE}" --sort-by='.lastTimestamp' | tail -20

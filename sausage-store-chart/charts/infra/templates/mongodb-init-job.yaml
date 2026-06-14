@@ -6,7 +6,7 @@ metadata:
   annotations:
     helm.sh/hook: post-install,post-upgrade
     helm.sh/hook-weight: "5"
-    helm.sh/hook-delete-policy: hook-succeeded
+    helm.sh/hook-delete-policy: hook-succeeded,before-hook-creation
   labels:
     app.kubernetes.io/name: mongodb-init
     app.kubernetes.io/instance: "{{ .Release.Name }}"
@@ -14,6 +14,8 @@ metadata:
     app.kubernetes.io/component: mongodb-init
     app.kubernetes.io/part-of: sausage-store
 spec:
+  backoffLimit: 6
+  activeDeadlineSeconds: 600
   template:
     spec:
       restartPolicy: OnFailure
@@ -24,21 +26,39 @@ spec:
             - sh
             - -c
             - |
-              until mongosh --host mongodb --username "$MONGO_INITDB_ROOT_USERNAME" --password "$MONGO_INITDB_ROOT_PASSWORD" --authenticationDatabase admin --eval "db.adminCommand('ping')" >/dev/null 2>&1; do
-                echo "Waiting for MongoDB..."
+              set -e
+              MONGO_HOST="mongodb-0.mongodb.{{ .Release.Namespace }}.svc.cluster.local"
+              TRIES=0
+              MAX_TRIES=60
+              until mongosh "mongodb://${MONGO_HOST}:27017/admin" \
+                -u "$MONGO_INITDB_ROOT_USERNAME" \
+                -p "$MONGO_INITDB_ROOT_PASSWORD" \
+                --eval "db.adminCommand('ping')" --quiet; do
+                TRIES=$((TRIES + 1))
+                if [ "$TRIES" -ge "$MAX_TRIES" ]; then
+                  echo "MongoDB not ready after ${MAX_TRIES} attempts"
+                  exit 1
+                fi
+                echo "Waiting for MongoDB (${TRIES}/${MAX_TRIES})..."
                 sleep 5
               done
-              mongosh --host mongodb --username "$MONGO_INITDB_ROOT_USERNAME" --password "$MONGO_INITDB_ROOT_PASSWORD" --authenticationDatabase admin --eval '
-                db = db.getSiblingDB("sausage-store");
-                const existingUser = db.getUsers({ filter: { user: "reports" } }).users;
-                if (existingUser.length === 0) {
-                  db.createUser({
-                    user: "reports",
-                    pwd: "reportspassword",
-                    roles: [{ role: "readWrite", db: "sausage-store" }]
-                  });
-                }
-              '
+              mongosh "mongodb://${MONGO_HOST}:27017/admin" \
+                -u "$MONGO_INITDB_ROOT_USERNAME" \
+                -p "$MONGO_INITDB_ROOT_PASSWORD" \
+                --eval "
+                  db = db.getSiblingDB('sausage-store');
+                  try {
+                    db.getUser('reports');
+                    print('User reports already exists');
+                  } catch (e) {
+                    db.createUser({
+                      user: 'reports',
+                      pwd: 'reportspassword',
+                      roles: [{ role: 'readWrite', db: 'sausage-store' }]
+                    });
+                    print('User reports created');
+                  }
+                " --quiet
           envFrom:
             - configMapRef:
                 name: mongodb-conf
